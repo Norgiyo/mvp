@@ -1,0 +1,14 @@
+node_modules
+.vercel
+.railway
+dist
+coverage
+server*.log
+
+.env
+.env.local
+.env.*
+*.env
+*.env.*
+temp*.env
+.env.example
