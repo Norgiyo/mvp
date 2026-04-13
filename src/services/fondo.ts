@@ -1,7 +1,7 @@
 import { sql } from "../db/postgres";
 import { debitUserInTx } from "./coins";
 
-const FONDO_CUP_RATE = 515;
+const DEFAULT_FONDO_CUP_RATE = 515;
 
 function parseUsdAmount(value: string | null | undefined): number | null {
   if (!value) {
@@ -16,16 +16,40 @@ function parseUsdAmount(value: string | null | undefined): number | null {
   return parsed;
 }
 
-function formatCupAmountFromUsd(amountUsd: number): string {
-  const amountCup = Math.floor(amountUsd * FONDO_CUP_RATE * 100) / 100;
+function formatCupAmountFromUsd(amountUsd: number, rate: number): string {
+  const amountCup = Math.floor(amountUsd * rate * 100) / 100;
   return `${new Intl.NumberFormat("es-ES", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(amountCup)} CUP`;
 }
 
-function usdFromCup(amountCup: number): number {
-  return amountCup / FONDO_CUP_RATE;
+function usdFromCup(amountCup: number, rate: number): number {
+  return amountCup / rate;
+}
+
+function parseRateValue(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+async function getFondoCupRateInTx(tx: any): Promise<number> {
+  const rows = await tx<{ value: string | null }[]>`
+    select value
+    from public_stats
+    where key = 'fondo_rate'
+    limit 1
+  `;
+
+  return parseRateValue(rows[0]?.value) ?? DEFAULT_FONDO_CUP_RATE;
 }
 
 async function addFondoUsdInTx(tx: any, amountUsd: number): Promise<void> {
@@ -48,15 +72,85 @@ async function addFondoUsdInTx(tx: any, amountUsd: number): Promise<void> {
 }
 
 export async function getFondoValue(): Promise<string> {
+  const [valueRows, rate] = await Promise.all([
+    sql<{ value: string | null }[]>`
+      select value
+      from public_stats
+      where key = 'fondo'
+      limit 1
+    `,
+    getFondoCupRate()
+  ]);
+
+  const amountUsd = parseUsdAmount(valueRows[0]?.value) ?? 0;
+  return formatCupAmountFromUsd(amountUsd, rate);
+}
+
+export async function getFondoCupRate(): Promise<number> {
   const rows = await sql<{ value: string | null }[]>`
     select value
     from public_stats
-    where key = 'fondo'
+    where key = 'fondo_rate'
     limit 1
   `;
 
-  const amountUsd = parseUsdAmount(rows[0]?.value) ?? 0;
-  return formatCupAmountFromUsd(amountUsd);
+  return parseRateValue(rows[0]?.value) ?? DEFAULT_FONDO_CUP_RATE;
+}
+
+export async function setFondoCupRate(rate: number): Promise<number> {
+  if (!Number.isInteger(rate) || rate <= 0) {
+    throw new Error("INVALID_FONDO_RATE");
+  }
+
+  await sql`
+    insert into public_stats (key, value, updated_at)
+    values ('fondo_rate', ${String(rate)}, now())
+    on conflict (key) do update
+      set value = excluded.value,
+          updated_at = now()
+  `;
+
+  return rate;
+}
+
+export async function adjustFondoCupRate(delta: number): Promise<number> {
+  return sql.begin(async (tx: any) => {
+    const currentRate = await getFondoCupRateInTx(tx);
+    const nextRate = Math.max(1, currentRate + delta);
+
+    await tx`
+      insert into public_stats (key, value, updated_at)
+      values ('fondo_rate', ${String(nextRate)}, now())
+      on conflict (key) do update
+        set value = excluded.value,
+            updated_at = now()
+    `;
+
+    return nextRate;
+  });
+}
+
+export async function getFondoSummary(): Promise<{
+  amountUsd: number;
+  rate: number;
+  formattedValue: string;
+}> {
+  const [valueRows, rate] = await Promise.all([
+    sql<{ value: string | null }[]>`
+      select value
+      from public_stats
+      where key = 'fondo'
+      limit 1
+    `,
+    getFondoCupRate()
+  ]);
+
+  const amountUsd = parseUsdAmount(valueRows[0]?.value) ?? 0;
+  return {
+    amountUsd,
+    rate,
+    formattedValue: formatCupAmountFromUsd(amountUsd, rate)
+  };
 }
 
 export async function clearFondoValue(): Promise<string> {
@@ -81,7 +175,7 @@ export async function clearFondoValue(): Promise<string> {
     return currentAmountUsd;
   });
 
-  return formatCupAmountFromUsd(amountUsd);
+  return formatCupAmountFromUsd(amountUsd, await getFondoCupRate());
 }
 
 export async function addFondoRevenueInTx(
@@ -117,7 +211,8 @@ export async function donateCoinsToFondo(
         `Donacion al Fondo: ${amountCoins} coins`
       );
 
-      await addFondoUsdInTx(tx, usdFromCup(amountCoins));
+      const rate = await getFondoCupRateInTx(tx);
+      await addFondoUsdInTx(tx, usdFromCup(amountCoins, rate));
       return { balance };
     });
 

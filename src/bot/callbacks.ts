@@ -17,7 +17,14 @@ import { isChannelMember } from "../services/channelMembership";
 import { claimDailyReward, claimLuckyDrop } from "../services/coins";
 import { cleanupExpiredEventMessages } from "../services/eventCleanup";
 
-import { donateCoinsToFondo, getFondoValue } from "../services/fondo";
+import {
+  adjustFondoCupRate,
+  donateCoinsToFondo,
+  getFondoCupRate,
+  getFondoSummary,
+  getFondoValue,
+  setFondoCupRate
+} from "../services/fondo";
 import { closeActiveMiningAndAnnounce, createNextMiningEvent, mineOre } from "../services/mining";
 import {
   closeRaffleAndAnnounce,
@@ -40,6 +47,8 @@ const ADMIN_PANEL_TEXT =
   "Panel privado de admin\n\nDesde aqui puedes publicar eventos y ejecutar acciones de admin.";
 const FONDO_DONATION_AMOUNTS = [100] as const;
 const COIN_EMOJI = String.fromCodePoint(0x1FA99);
+const FONDO_RATE_PRESETS = [300, 350, 400, 450, 500, 550] as const;
+const FONDO_RATE_STEPS = [-25, -10, -5, 5, 10, 25] as const;
 
 function escapeHtml(value: string): string {
   return value
@@ -126,6 +135,9 @@ export function buildAdminKeyboard(): InlineKeyboardMarkup {
         { text: "Fondo", callback_data: encodeCallback("admin", "post_fondo_donation"), style: "danger" }
       ],
       [
+        { text: "Tasa Fondo", callback_data: encodeCallback("admin", "fondo_rate_panel"), style: "primary" }
+      ],
+      [
         { text: "Daily", callback_data: encodeCallback("admin", "post_daily"), style: "success" },
         { text: "Anuncio", callback_data: encodeCallback("admin", "post_ad"), style: "primary" }
       ],
@@ -161,6 +173,71 @@ export async function sendAdminPanel(api: Api, userId: number): Promise<number> 
   });
 
   return message.message_id;
+}
+
+function buildFondoRateKeyboard(): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      FONDO_RATE_STEPS.map((step) => ({
+        text: step > 0 ? `+${step}` : `${step}`,
+        callback_data: encodeCallback("admin", `fondo_rate_adjust|${step}`),
+        style: step > 0 ? "success" : "danger"
+      })),
+      FONDO_RATE_PRESETS.slice(0, 3).map((rate) => ({
+        text: `${rate}`,
+        callback_data: encodeCallback("admin", `fondo_rate_set|${rate}`),
+        style: "primary"
+      })),
+      FONDO_RATE_PRESETS.slice(3).map((rate) => ({
+        text: `${rate}`,
+        callback_data: encodeCallback("admin", `fondo_rate_set|${rate}`),
+        style: "primary"
+      })),
+      [
+        { text: "Actualizar", callback_data: encodeCallback("admin", "fondo_rate_panel"), style: "primary" },
+        { text: "Volver", callback_data: encodeCallback("admin", "panel"), style: "danger" }
+      ]
+    ]
+  };
+}
+
+async function buildFondoRatePanelText(): Promise<string> {
+  const summary = await getFondoSummary();
+  return [
+    "<b>Tasa del Fondo</b>",
+    "",
+    `Tasa actual: <b>${summary.rate}</b> CUP por USD`,
+    `Fondo visible: <b>${summary.formattedValue}</b>`,
+    `Base guardada: <b>${summary.amountUsd.toFixed(6)} USD</b>`,
+    "",
+    "Usa los botones para subir, bajar o fijar la tasa del dia."
+  ].join("\n");
+}
+
+async function showFondoRatePanel(ctx: Context, userId: number): Promise<void> {
+  const text = await buildFondoRatePanelText();
+  const message = ctx.callbackQuery?.message;
+  if (message?.chat?.id === userId && "message_id" in message) {
+    await ctx.api
+      .editMessageText(userId, message.message_id, text, {
+        parse_mode: "HTML",
+        reply_markup: buildFondoRateKeyboard()
+      })
+      .catch(async () => {
+        await ctx.api.sendMessage(userId, text, {
+          disable_notification: true,
+          parse_mode: "HTML",
+          reply_markup: buildFondoRateKeyboard()
+        });
+      });
+    return;
+  }
+
+  await ctx.api.sendMessage(userId, text, {
+    disable_notification: true,
+    parse_mode: "HTML",
+    reply_markup: buildFondoRateKeyboard()
+  });
 }
 
 function isAllowedFondoDonationAmount(
@@ -560,10 +637,44 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
           return;
         }
 
+        if (typeof payload.value === "string" && payload.value.startsWith("fondo_rate_set|")) {
+          const rawRate = payload.value.split("|")[1];
+          const rate = Number.parseInt(rawRate ?? "", 10);
+          if (!Number.isFinite(rate) || rate <= 0) {
+            await answerToast(ctx, "Tasa invalida.");
+            return;
+          }
+
+          await setFondoCupRate(rate);
+          await showFondoRatePanel(ctx, from.id);
+          await answerToast(ctx, `Tasa del Fondo: ${rate}`);
+          return;
+        }
+
+        if (typeof payload.value === "string" && payload.value.startsWith("fondo_rate_adjust|")) {
+          const rawDelta = payload.value.split("|")[1];
+          const delta = Number.parseInt(rawDelta ?? "", 10);
+          if (!Number.isFinite(delta) || delta === 0) {
+            await answerToast(ctx, "Ajuste invalido.");
+            return;
+          }
+
+          const rate = await adjustFondoCupRate(delta);
+          await showFondoRatePanel(ctx, from.id);
+          await answerToast(ctx, `Tasa del Fondo: ${rate}`);
+          return;
+        }
+
         switch (payload.value) {
           case "panel": {
             await sendAdminPanel(ctx.api, from.id);
             await answerToast(ctx, "Panel actualizado.");
+            return;
+          }
+
+          case "fondo_rate_panel": {
+            await showFondoRatePanel(ctx, from.id);
+            await answerToast(ctx, `Tasa actual: ${await getFondoCupRate()}`);
             return;
           }
 
