@@ -47,8 +47,6 @@ const ADMIN_PANEL_TEXT =
   "Panel privado de admin\n\nDesde aqui puedes publicar eventos y ejecutar acciones de admin.";
 const FONDO_DONATION_AMOUNTS = [100] as const;
 const COIN_EMOJI = String.fromCodePoint(0x1FA99);
-const FONDO_RATE_PRESETS = [300, 350, 400, 450, 500, 550] as const;
-const FONDO_RATE_STEPS = [-25, -10, -5, 5, 10, 25] as const;
 
 function escapeHtml(value: string): string {
   return value
@@ -178,21 +176,10 @@ export async function sendAdminPanel(api: Api, userId: number): Promise<number> 
 function buildFondoRateKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      FONDO_RATE_STEPS.map((step) => ({
-        text: step > 0 ? `+${step}` : `${step}`,
-        callback_data: encodeCallback("admin", `fondo_rate_adjust|${step}`),
-        style: step > 0 ? "success" : "danger"
-      })),
-      FONDO_RATE_PRESETS.slice(0, 3).map((rate) => ({
-        text: `${rate}`,
-        callback_data: encodeCallback("admin", `fondo_rate_set|${rate}`),
-        style: "primary"
-      })),
-      FONDO_RATE_PRESETS.slice(3).map((rate) => ({
-        text: `${rate}`,
-        callback_data: encodeCallback("admin", `fondo_rate_set|${rate}`),
-        style: "primary"
-      })),
+      [
+        { text: "-10", callback_data: encodeCallback("admin", "fondo_rate_adjust|-10"), style: "danger" },
+        { text: "+10", callback_data: encodeCallback("admin", "fondo_rate_adjust|10"), style: "success" }
+      ],
       [
         { text: "Actualizar", callback_data: encodeCallback("admin", "fondo_rate_panel"), style: "primary" },
         { text: "Volver", callback_data: encodeCallback("admin", "panel"), style: "danger" }
