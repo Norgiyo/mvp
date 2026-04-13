@@ -85,8 +85,9 @@ export function createServerApp() {
 async function main(): Promise<void> {
   const app = createServerApp();
   const port = Number.parseInt(process.env.PORT ?? "3000", 10);
-  const server = app.listen(port, () => {
-    console.log(`la-esquina-mvp listening on :${port}`);
+  const host = "0.0.0.0";
+  const server = app.listen(port, host, () => {
+    console.log(`la-esquina-mvp listening on ${host}:${port}`);
   });
 
   const shutdown = async (signal: string): Promise<void> => {
