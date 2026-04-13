@@ -49,6 +49,16 @@ export async function registerDailyRewardMessage(day: string, messageId: number)
   await saveTimedGroupMessage("daily:event", "daily:active", day, messageId, dayExpiryIso(day));
 }
 
+export async function registerTemporaryGroupMessage(
+  keyPrefix: string,
+  activeSetKey: string,
+  id: string,
+  messageId: number,
+  expiresAt: string
+): Promise<void> {
+  await saveTimedGroupMessage(keyPrefix, activeSetKey, id, messageId, expiresAt);
+}
+
 async function cleanupTimedMessages(
   api: Api,
   activeSetKey: string,
@@ -190,6 +200,7 @@ export async function cleanupExpiredEventMessages(api: Api): Promise<void> {
 
   await withRedisLock("cleanup:expired_events", 10, async () => {
     await cleanupTimedMessages(api, "daily:active", "daily:event");
+    await cleanupTimedMessages(api, "drop:winner:active", "drop:winner");
     await cleanupExpiredAds(api);
     await cleanupExpiredDrops(api);
     await cleanupExpiredBirthdays(api);

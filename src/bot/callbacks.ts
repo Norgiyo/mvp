@@ -15,7 +15,7 @@ import { mentionBirthdayUser, sendBirthdayGift } from "../services/birthdays";
 import { runSerializedChannelPublish } from "../services/channelPublish";
 import { isChannelMember } from "../services/channelMembership";
 import { claimDailyReward, claimLuckyDrop } from "../services/coins";
-import { cleanupExpiredEventMessages } from "../services/eventCleanup";
+import { cleanupExpiredEventMessages, registerTemporaryGroupMessage } from "../services/eventCleanup";
 
 import {
   adjustFondoCupRate,
@@ -38,7 +38,7 @@ import {
 import { getBalance, getUserPublicProfile, isAdminUser, upsertUser } from "../services/users";
 import type { LuckyDropState } from "../types";
 import { decodeCallback, encodeCallback } from "../utils/callbackData";
-import { todayKey } from "../utils/time";
+import { addSeconds, todayKey } from "../utils/time";
 import { toTelegramProfile } from "../utils/telegram";
 
 const HOME_MESSAGE_TEXT =
@@ -393,7 +393,7 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
           await redis.del(`drop:event:${dropId}`);
           await redis.srem("drops:active", dropId);
 
-          await ctx.api
+          const winnerMessage = await ctx.api
             .sendMessage(
               env.groupChatId,
               `${mentionFromUser(from)} acaba de ganar ${drop.reward} coins en el Lucky Drop.`,
@@ -403,6 +403,16 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
               }
             )
             .catch(() => undefined);
+
+          if (winnerMessage && "message_id" in winnerMessage) {
+            await registerTemporaryGroupMessage(
+              "drop:winner",
+              "drop:winner:active",
+              `${dropId}:${winnerMessage.message_id}`,
+              winnerMessage.message_id,
+              addSeconds(new Date(), 5 * 60).toISOString()
+            ).catch(() => undefined);
+          }
 
           const message = query.message;
           if (message && "message_id" in message) {
