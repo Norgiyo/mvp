@@ -24,6 +24,25 @@ function readFirstString(value: unknown): string | undefined {
   return readString(value);
 }
 
+function readSourceValue(source: Record<string, unknown>, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = readFirstString(source[name]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeRewardEventType(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return value.trim().toLowerCase().replace(/-/g, "_");
+}
+
 function readBody(req: RequestLike): Record<string, unknown> {
   if (typeof req.body === "string") {
     return JSON.parse(req.body) as Record<string, unknown>;
@@ -44,14 +63,16 @@ function readPayload(req: RequestLike): MonetagPostbackPayload {
   };
 
   return {
-    ymid: readFirstString(source.ymid) ?? "",
-    event_type: readFirstString(source.event_type),
-    reward_event_type: readFirstString(source.reward_event_type),
-    estimated_price: readFirstString(source.estimated_price),
-    zone_id: readFirstString(source.zone_id),
-    sub_zone_id: readFirstString(source.sub_zone_id),
-    request_var: readFirstString(source.request_var),
-    telegram_id: readFirstString(source.telegram_id)
+    ymid: readSourceValue(source, "ymid") ?? "",
+    event_type: readSourceValue(source, "event_type", "event"),
+    reward_event_type: normalizeRewardEventType(
+      readSourceValue(source, "reward_event_type", "reward")
+    ),
+    estimated_price: readSourceValue(source, "estimated_price", "price", "revenue"),
+    zone_id: readSourceValue(source, "zone_id", "zone"),
+    sub_zone_id: readSourceValue(source, "sub_zone_id", "sub_zone"),
+    request_var: readSourceValue(source, "request_var", "requestVar", "source"),
+    telegram_id: readSourceValue(source, "telegram_id", "telegramId")
   };
 }
 
@@ -78,14 +99,6 @@ function validatePayload(payload: MonetagPostbackPayload): string | null {
 
   if (payload.telegram_id && !isDigits(payload.telegram_id)) {
     return "Invalid telegram_id";
-  }
-
-  if (
-    payload.event_type &&
-    payload.event_type !== "impression" &&
-    payload.event_type !== "click"
-  ) {
-    return "Invalid event_type";
   }
 
   if (
@@ -149,6 +162,16 @@ export async function handleMonetagPostback(
     }
 
     const result = await processMonetagPostback(payload);
+    console.info("monetag_postback_processed", {
+      status: result.status,
+      rewarded: "rewarded" in result ? result.rewarded : undefined,
+      reason: "reason" in result ? result.reason : undefined,
+      ymid: payload.ymid,
+      zone_id: payload.zone_id ?? null,
+      request_var: payload.request_var ?? null,
+      reward_event_type: payload.reward_event_type ?? null,
+      event_type: payload.event_type ?? null
+    });
     json(res, 200, {
       ok: true,
       ...result
