@@ -14,7 +14,7 @@ Bot de Telegram orientado a canal, con economia de coins, eventos simples y rewa
 
 ## Stack
 
-- Node.js 20
+- Node.js 24
 - TypeScript
 - Express
 - grammY
@@ -142,7 +142,7 @@ Si alguna variable en Vercel fue creada como `sensitive`, su valor puede no ser 
 ### Fase 1. Preparacion
 
 1. Crear el servicio web en Railway.
-2. Configurar Node 20.
+2. Configurar Node 24.
 3. Cargar en Railway todas las variables reales de produccion.
 4. Generar el dominio publico de Railway.
 5. Poner ese dominio en `APP_URL`.
