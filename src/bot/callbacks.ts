@@ -18,6 +18,7 @@ import { claimDailyReward, claimLuckyDrop } from "../services/coins";
 import { cleanupExpiredEventMessages } from "../services/eventCleanup";
 
 import { donateCoinsToFondo, getFondoValue } from "../services/fondo";
+import { closeActiveMiningAndAnnounce, createNextMiningEvent, mineOre } from "../services/mining";
 import {
   closeRaffleAndAnnounce,
   createNextRaffle,
@@ -138,9 +139,13 @@ export function buildAdminKeyboard(): InlineKeyboardMarkup {
         { text: "Subasta", callback_data: encodeCallback("admin", "post_auction"), style: "primary" }
       ],
       [
+        { text: "Mineria", callback_data: encodeCallback("admin", "post_mining_create"), style: "success" },
         { text: "Leaderboard semanal", callback_data: encodeCallback("admin", "post_weekly_leaderboard"), style: "success" }
       ],
-      [{ text: "Crear rifa", callback_data: encodeCallback("admin", "post_raffle_create"), style: "primary" }],
+      [
+        { text: "Crear rifa", callback_data: encodeCallback("admin", "post_raffle_create"), style: "primary" },
+        { text: "Cerrar mineria", callback_data: encodeCallback("admin", "post_mining_close"), style: "danger" }
+      ],
       [
         { text: "Cerrar rifa", callback_data: encodeCallback("admin", "post_raffle_close"), style: "danger" },
         { text: "Panel", callback_data: encodeCallback("admin", "panel"), style: "danger" }
@@ -363,6 +368,44 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
         }
 
         await answerToast(ctx, `Drop reclamado. Saldo: ${claimResult.balance}`);
+        return;
+      }
+
+      case "mining": {
+        const eventId = payload.value;
+        if (!eventId) {
+          await answerToast(ctx, "Mina invalida.");
+          return;
+        }
+
+        const result = await mineOre(ctx.api, eventId, from.id);
+        if (result.status === "not_found") {
+          const message = query.message;
+          if (message && "message_id" in message) {
+            await ctx.api.deleteMessage(message.chat.id, message.message_id).catch(() => undefined);
+          }
+          await answerToast(ctx, "Esta mina ya no esta activa.");
+          return;
+        }
+        if (result.status === "busy") {
+          await answerToast(ctx, "La mina se esta actualizando. Prueba otra vez.");
+          return;
+        }
+        if (result.status === "cooldown") {
+          await answerToast(ctx, `Tu pico se enfria. Vuelve en ${Math.max(1, result.retryAfterSeconds)}s.`);
+          return;
+        }
+        if (result.status !== "mined") {
+          await answerToast(ctx, "La mina ya no esta disponible.");
+          return;
+        }
+
+        await answerToast(
+          ctx,
+          result.depleted
+            ? `Sacaste ${result.extracted}. La mina se agoto.`
+            : `Sacaste ${result.extracted}. Quedan ${result.remainingOre}/${result.totalOre}.`
+        );
         return;
       }
 
@@ -595,6 +638,38 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
                   ? `Subasta anterior reemplazada. Nuevo mensaje (#${result.messageId}).`
                   : `Subasta publicada (#${result.messageId}).`;
             await answerToast(ctx, replacementText);
+            return;
+          }
+
+          case "post_mining_create": {
+            const result = await runAdminChannelPublish(ctx, "post_mining_create", () =>
+              createNextMiningEvent(ctx.api)
+            );
+            if (result === null) {
+              return;
+            }
+            await answerToast(
+              ctx,
+              result.replaced
+                ? "Mina anterior cerrada. Nueva mineria publicada."
+                : "Mineria publicada."
+            );
+            return;
+          }
+
+          case "post_mining_close": {
+            const result = await runAdminChannelPublish(ctx, "post_mining_close", () =>
+              closeActiveMiningAndAnnounce(ctx.api, "manual")
+            );
+            if (result === null) {
+              return;
+            }
+            if (result.status === "not_found") {
+              await answerToast(ctx, "No hay mineria activa.");
+              return;
+            }
+
+            await answerToast(ctx, "Mineria cerrada y resultado publicado.");
             return;
           }
 

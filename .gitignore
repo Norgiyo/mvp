@@ -12,3 +12,4 @@ server*.log
 *.env.*
 temp*.env
 .env.example
+backups

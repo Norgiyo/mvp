@@ -8,6 +8,7 @@ export type RewardType =
   | "ad_reward"
   | "daily_reward"
   | "lucky_drop"
+  | "mining_reward"
   | "birthday_gift_sent"
   | "birthday_gift_received"
   | "auction_bid"
@@ -23,6 +24,7 @@ export type CallbackAction =
   | "fondo"
   | "daily"
   | "drop"
+  | "mining"
   | "birthday"
   | "auction"
   | "raffle"
@@ -82,6 +84,17 @@ export type LuckyDropState = {
   id: string;
   reward: number;
   messageId: number;
+  expiresAt: string;
+};
+
+export type MiningState = {
+  id: string;
+  chatId: number;
+  messageId: number;
+  totalOre: number;
+  remainingOre: number;
+  rewardCoins: number;
+  createdAt: string;
   expiresAt: string;
 };
 

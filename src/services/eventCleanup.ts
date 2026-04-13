@@ -5,6 +5,7 @@ import { redis } from "../db/redis";
 import { sql } from "../db/postgres";
 import { withRedisLock } from "./antiAbuse";
 import { tickAuction } from "./auction";
+import { cleanupExpiredMining } from "./mining";
 import { closeRaffleAndAnnounce } from "./raffles";
 
 import type {
@@ -193,6 +194,7 @@ export async function cleanupExpiredEventMessages(api: Api): Promise<void> {
     await cleanupExpiredDrops(api);
     await cleanupExpiredBirthdays(api);
     await tickAuction(api);
+    await cleanupExpiredMining(api);
     await cleanupExpiredOrClosedRaffles(api);
     return true;
   });

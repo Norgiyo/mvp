@@ -15,6 +15,7 @@ export function decodeCallback(data: string | undefined): CallbackPayload | null
     "fondo",
     "daily",
     "drop",
+    "mining",
     "birthday",
     "auction",
     "raffle",
