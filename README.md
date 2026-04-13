@@ -241,8 +241,6 @@ Botones actuales:
 - `Leaderboard semanal`
 - `Crear rifa`
 - `Cerrar rifa`
-- `Crear votacion Fondo`
-- `Cerrar votacion Fondo`
 - `Panel`
 
 ## Funcionalidades activas
@@ -353,12 +351,6 @@ Botones actuales:
   - top 10 por balance
   - bonus semanal al ganador si aun no se entrego
 
-### 10. Votacion del Fondo
-
-- Botones admin:
-  - `Crear votacion Fondo`
-  - `Cerrar votacion Fondo`
-
 ## Seguridad
 
 ### Secretos separados
@@ -425,7 +417,6 @@ Recomendacion:
 - Servicios:
   - `src/services/ads.ts`
   - `src/services/fondo.ts`
-  - `src/services/fondoPoll.ts`
   - `src/services/birthdays.ts`
   - `src/services/auction.ts`
   - `src/services/raffles.ts`

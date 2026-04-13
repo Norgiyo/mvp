@@ -18,7 +18,6 @@ import { claimDailyReward, claimLuckyDrop } from "../services/coins";
 import { cleanupExpiredEventMessages } from "../services/eventCleanup";
 
 import { donateCoinsToFondo, getFondoValue } from "../services/fondo";
-import { closeFondoDecisionPoll, createNextFondoDecisionPoll } from "../services/fondoPoll";
 import {
   closeRaffleAndAnnounce,
   createNextRaffle,
@@ -142,18 +141,6 @@ export function buildAdminKeyboard(): InlineKeyboardMarkup {
         { text: "Leaderboard semanal", callback_data: encodeCallback("admin", "post_weekly_leaderboard"), style: "success" }
       ],
       [{ text: "Crear rifa", callback_data: encodeCallback("admin", "post_raffle_create"), style: "primary" }],
-      [
-        {
-          text: "Crear votacion Fondo",
-          callback_data: encodeCallback("admin", "post_fondo_poll_create"),
-          style: "primary"
-        },
-        {
-          text: "Cerrar votacion Fondo",
-          callback_data: encodeCallback("admin", "post_fondo_poll_close"),
-          style: "danger"
-        }
-      ],
       [
         { text: "Cerrar rifa", callback_data: encodeCallback("admin", "post_raffle_close"), style: "danger" },
         { text: "Panel", callback_data: encodeCallback("admin", "panel"), style: "danger" }
@@ -637,42 +624,6 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
                   : "Leaderboard semanal publicado (bonus ya entregado esta semana)."
                 : "Leaderboard semanal publicado (sin participantes)."
             );
-            return;
-          }
-
-          case "post_fondo_poll_create": {
-            const result = await runAdminChannelPublish(ctx, "post_fondo_poll_create", () =>
-              createNextFondoDecisionPoll(ctx.api)
-            );
-            if (result === null) {
-              return;
-            }
-            await answerToast(
-              ctx,
-              result.replacedPoll
-                ? `Votacion anterior cerrada. Nueva votacion publicada (#${result.messageId}).`
-                : `Votacion del Fondo publicada (#${result.messageId}).`
-            );
-            return;
-          }
-
-          case "post_fondo_poll_close": {
-            const result = await runAdminChannelPublish(ctx, "post_fondo_poll_close", () =>
-              closeFondoDecisionPoll(ctx.api)
-            );
-            if (result === null) {
-              return;
-            }
-            if (result.status === "not_found") {
-              await answerToast(ctx, "No hay votacion activa del Fondo.");
-              return;
-            }
-            if (result.status === "already_closed") {
-              await answerToast(ctx, "La votacion ya estaba cerrada. Estado limpiado.");
-              return;
-            }
-
-            await answerToast(ctx, "Votacion cerrada y resultado publicado.");
             return;
           }
 
