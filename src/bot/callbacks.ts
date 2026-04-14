@@ -406,7 +406,7 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
           const winnerMessage = await ctx.api
             .sendMessage(
               env.groupChatId,
-              `${mentionFromUser(from)} acaba de ganar ${drop.reward} coins en el Lucky Drop.`,
+              `${mentionFromUser(from)} abrio el Lucky Drop y le tocaron ${drop.reward} coins.`,
               {
                 disable_notification: true,
                 parse_mode: "HTML"

@@ -9,6 +9,9 @@ import type { LuckyDropState } from "../types";
 import { encodeCallback } from "../utils/callbackData";
 import { addSeconds } from "../utils/time";
 
+const LUCKY_DROP_MIN_COINS = 0;
+const LUCKY_DROP_MAX_COINS = 10;
+
 export async function maybePostLuckyDrop(
   api: Api,
   options: { force?: boolean } = {}
@@ -24,17 +27,18 @@ export async function maybePostLuckyDrop(
 
   const dropId = crypto.randomUUID();
   const expiresAt = addSeconds(new Date(), appConfig.dropTtlSeconds);
+  const reward = crypto.randomInt(LUCKY_DROP_MIN_COINS, LUCKY_DROP_MAX_COINS + 1);
 
   const message = await api.sendMessage(
     env.groupChatId,
-    `🎁 Lucky drop\n\nEl primero que llegue se lleva +${env.luckyDropRewardCoins} 🪙`,
+    "Lucky drop\n\nNadie sabe cuanto trae. El primero que lo abra descubre lo que salio.",
     {
       disable_notification: true,
       reply_markup: {
         inline_keyboard: [
           [
             {
-              text: "🎁 Agarrarlo",
+              text: "ABRIR",
               callback_data: encodeCallback("drop", dropId),
               style: "success"
             }
@@ -46,7 +50,7 @@ export async function maybePostLuckyDrop(
 
   const state: LuckyDropState = {
     id: dropId,
-    reward: env.luckyDropRewardCoins,
+    reward,
     messageId: message.message_id,
     expiresAt: expiresAt.toISOString()
   };
