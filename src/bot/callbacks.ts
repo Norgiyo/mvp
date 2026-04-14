@@ -325,7 +325,7 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
             return;
           }
 
-          await ctx.api
+          const donorMessage = await ctx.api
             .sendMessage(
               env.groupChatId,
               `${mentionFromUser(from)} acaba de donar ${amount} coins al Fondo. Fondo: ${donation.fondo}.`,
@@ -335,6 +335,16 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
               }
             )
             .catch(() => undefined);
+
+          if (donorMessage && "message_id" in donorMessage) {
+            await registerTemporaryGroupMessage(
+              "fondo:donation",
+              "fondo:donation:active",
+              `${from.id}:${donorMessage.message_id}`,
+              donorMessage.message_id,
+              addSeconds(new Date(), 3 * 60).toISOString()
+            ).catch(() => undefined);
+          }
 
           await answerToast(
             ctx,
