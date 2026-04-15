@@ -13,3 +13,4 @@ server*.log
 temp*.env
 .env.example
 backups
+README.md
