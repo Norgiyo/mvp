@@ -38,7 +38,7 @@ export async function maybePostLuckyDrop(
 
   const message = await api.sendMessage(
     env.groupChatId,
-    '🎁',
+    '🍀',
     {
       disable_notification: true,
       reply_markup: {
