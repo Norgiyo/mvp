@@ -116,14 +116,14 @@ export async function postAdEvent(
 
     const message = await api.sendMessage(
       env.groupChatId,
-      `📺 Anuncio disponible\n\nAbrí la Mini App y mirá un rewarded para ganar +${env.adRewardCoins} 🪙`,
+      '📺',
       {
         disable_notification: true,
         reply_markup: {
           inline_keyboard: [
             [
               {
-                text: `Ver anuncio +${env.adRewardCoins}`,
+                text: "VER AD",
                 url: miniAppUrl,
                 style: "primary"
               }
