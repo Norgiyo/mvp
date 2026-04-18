@@ -6,7 +6,6 @@ import { appConfig, env } from "../config";
 import { redis } from "../db/redis";
 import { cleanupExpiredEventMessages } from "../services/eventCleanup";
 import type { LuckyDropState } from "../types";
-import { encodeCallback } from "../utils/callbackData";
 import { addSeconds } from "../utils/time";
 
 function buildDropX2MiniAppLink(dropId: string): string {
@@ -46,15 +45,9 @@ export async function maybePostLuckyDrop(
         inline_keyboard: [
           [
             {
-              text: "ABRIR",
-              callback_data: encodeCallback("drop", dropId),
-              style: "success"
-            }
-          ],
-          [
-            {
-              text: "ABRIR x2 🎬",
-              url: buildDropX2MiniAppLink(dropId)
+              text: "x2 🎬",
+              url: buildDropX2MiniAppLink(dropId),
+              style: "danger"
             }
           ]
         ]
