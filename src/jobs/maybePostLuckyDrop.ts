@@ -38,7 +38,7 @@ export async function maybePostLuckyDrop(
 
   const message = await api.sendMessage(
     env.groupChatId,
-    '<tg-emoji emoji-id="5435957248314579621">🎁</tg-emoji>',
+    '<tg-emoji emoji-id="5395325195542078574">🎁</tg-emoji>',
     {
       disable_notification: true,
       parse_mode: "HTML",
