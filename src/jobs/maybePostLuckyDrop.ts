@@ -9,6 +9,13 @@ import type { LuckyDropState } from "../types";
 import { encodeCallback } from "../utils/callbackData";
 import { addSeconds } from "../utils/time";
 
+function buildDropX2MiniAppLink(dropId: string): string {
+  const url = new URL(`https://t.me/${env.botUsername}`);
+  url.searchParams.set("startapp", `dropx2_${dropId}`);
+  url.searchParams.set("mode", "compact");
+  return url.toString();
+}
+
 const LUCKY_DROP_MIN_COINS = 0;
 const LUCKY_DROP_MAX_COINS = 10;
 
@@ -42,6 +49,12 @@ export async function maybePostLuckyDrop(
               text: "ABRIR",
               callback_data: encodeCallback("drop", dropId),
               style: "success"
+            }
+          ],
+          [
+            {
+              text: "ABRIR x2 🎬",
+              url: buildDropX2MiniAppLink(dropId)
             }
           ]
         ]

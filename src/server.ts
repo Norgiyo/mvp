@@ -2,6 +2,8 @@ import express, { type NextFunction, type Request, type Response } from "express
 
 import { handleAdAttempt } from "./api/ad-attempt";
 import { handleAdDone } from "./api/ad-done";
+import { handleDropX2Attempt } from "./api/drop-x2-attempt";
+import { handleDropX2Claim } from "./api/drop-x2-claim";
 import { handleAdminAction } from "./api/admin-action";
 import { handleCloseRaffle } from "./api/close-raffle";
 import { handleCreateRaffle } from "./api/create-raffle";
@@ -52,6 +54,8 @@ export function createServerApp() {
   app.post("/api/webapp-session", wrap(handleWebAppSession));
   app.post("/api/ad-attempt", wrap(handleAdAttempt));
   app.post("/api/ad-done", wrap(handleAdDone));
+  app.post("/api/drop-x2-attempt", wrap(handleDropX2Attempt));
+  app.post("/api/drop-x2-claim", wrap(handleDropX2Claim));
   app.all("/api/monetag-postback", wrap(handleMonetagPostback));
   app.get("/api/monetag-sdk", wrap(handleMonetagSdk));
   app.post("/api/admin", wrap(handleAdminAction));

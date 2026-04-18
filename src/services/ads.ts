@@ -578,14 +578,16 @@ export async function processMonetagPostback(
       return { status: "processed" as const, rewarded: false };
     }
 
-    await creditUserInTx(
-      tx,
-      Number(row.user_id),
-      Number(row.reward_amount),
-      "ad_reward",
-      `Monetag rewarded ad ${row.ymid}`
-    );
-    await addFondoRevenueInTx(tx, payload.estimated_price);
+    if (Number(row.reward_amount) > 0) {
+      await creditUserInTx(
+        tx,
+        Number(row.user_id),
+        Number(row.reward_amount),
+        "ad_reward",
+        `Monetag rewarded ad ${row.ymid}`
+      );
+      await addFondoRevenueInTx(tx, payload.estimated_price);
+    }
 
     await tx`
       update ad_claims
@@ -619,6 +621,486 @@ export async function processMonetagPostback(
   }
 
   return result;
+}
+
+export async function createDropX2AdAttempt(params: {
+  dropId: string;
+  userId: number;
+  zoneId: string;
+  requestVar?: string;
+}): Promise<
+  | { status: "ok"; attempt: AdAttemptState }
+  | { status: "invalid_zone" | "cooldown" }
+> {
+  if (!isConfiguredMonetagZone(params.zoneId)) {
+    return { status: "invalid_zone" };
+  }
+
+  const eventId = `dropx2_${params.dropId}`;
+
+  const reusableRows = await sql<AdClaimRow[]>`
+    select
+      token, event_id, user_id, ymid, sdk_zone_id, reward_amount, request_var, status,
+      frontend_resolved_at, frontend_failed_at, frontend_error,
+      postback_received_at, rewarded_at, last_event_type, last_reward_event_type,
+      expires_at, created_at
+    from ad_claims
+    where event_id = ${eventId}
+      and user_id = ${params.userId}
+      and status = 'pending'
+      and expires_at > now()
+    order by created_at desc
+    limit 1
+  `;
+
+  if (reusableRows[0]) {
+    return { status: "ok", attempt: mapAttempt(reusableRows[0]) };
+  }
+
+  const cooldown = await acquireCooldown("ad_attempt", params.userId, 2);
+  if (!cooldown) {
+    return { status: "cooldown" };
+  }
+
+  const token = crypto.randomUUID();
+  const ymid = crypto.randomUUID();
+  const expiresAt = addSeconds(new Date(), appConfig.adClaimTtlSeconds).toISOString();
+  const requestVar = params.requestVar ?? env.monetagRequestVar;
+
+  const rows = await sql<AdClaimRow[]>`
+    insert into ad_claims (
+      token, event_id, user_id, ymid, sdk_zone_id, reward_amount, request_var, status, expires_at
+    )
+    values (
+      ${token}, ${eventId}, ${params.userId}, ${ymid}, ${params.zoneId},
+      0, ${requestVar}, 'pending', ${expiresAt}
+    )
+    returning
+      token, event_id, user_id, ymid, sdk_zone_id, reward_amount, request_var, status,
+      frontend_resolved_at, frontend_failed_at, frontend_error,
+      postback_received_at, rewarded_at, last_event_type, last_reward_event_type,
+      expires_at, created_at
+  `;
+
+  return { status: "ok", attempt: mapAttempt(rows[0]) };
+}
+
+export function buildDropX2WebAppHtml(input: {
+  dropId: string;
+  dropReward: number;
+  zoneId: string;
+  sdkUrl: string;
+  requestVar: string;
+}): string {
+  const safeDropId = JSON.stringify(input.dropId);
+  const safeDropReward = JSON.stringify(input.dropReward);
+  const safeZoneId = JSON.stringify(input.zoneId);
+  const safeSdkUrl = JSON.stringify(input.sdkUrl);
+  const safeRequestVar = JSON.stringify(input.requestVar);
+  const safePollTries = JSON.stringify(appConfig.adAttemptPollMaxTries);
+  const safePollIntervalMs = JSON.stringify(appConfig.adAttemptPollIntervalMs);
+
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>La Esquina | Lucky Drop x2</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7efde;
+        --card: rgba(255, 250, 241, 0.96);
+        --ink: #20170e;
+        --muted: #6e6251;
+        --line: rgba(32, 23, 14, 0.11);
+        --accent: #b54a19;
+        --accent-2: #f39c12;
+        --ok: #1d7a44;
+        --warn: #a65e00;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Times New Roman", serif;
+        background:
+          radial-gradient(circle at top left, rgba(243, 156, 18, 0.3), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(181, 74, 25, 0.14), transparent 26%),
+          linear-gradient(180deg, #fff7ea 0%, var(--bg) 100%);
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .card {
+        width: min(100%, 420px);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: 0 20px 48px rgba(54, 37, 17, 0.12);
+        padding: 24px;
+      }
+      .eyebrow {
+        margin-bottom: 10px;
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 30px;
+        line-height: 1.04;
+      }
+      p {
+        margin: 0 0 14px;
+        color: var(--muted);
+        line-height: 1.52;
+      }
+      .reward {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(243, 156, 18, 0.16);
+        color: var(--ink);
+        font-weight: 700;
+      }
+      .actions {
+        margin-top: 18px;
+      }
+      button {
+        width: 100%;
+        appearance: none;
+        border: 0;
+        border-radius: 15px;
+        padding: 15px 18px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        cursor: pointer;
+      }
+      button[disabled] {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+      .status {
+        margin-top: 16px;
+        min-height: 44px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: rgba(32, 23, 14, 0.04);
+        color: var(--ink);
+        line-height: 1.4;
+      }
+      .status.ok { color: var(--ok); }
+      .status.warn { color: var(--warn); }
+      .meta {
+        margin-top: 12px;
+        font-size: 13px;
+      }
+      code {
+        font-family: Consolas, monospace;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="eyebrow">La Esquina &mdash; Lucky Drop</div>
+      <h1>Abrir x2 🎬</h1>
+      <div class="reward">+<span id="reward"></span> 🪙</div>
+      <p id="intro">Mira el anuncio para reclamar el Lucky Drop con recompensa doble.</p>
+      <div class="actions">
+        <button id="watch">Ver anuncio</button>
+      </div>
+      <div class="status" id="status">Preparando Monetag...</div>
+      <p class="meta">Zona seleccionada para este intento: <code id="zone"></code></p>
+    </main>
+    <script>
+      const dropId = ${safeDropId};
+      const dropReward = ${safeDropReward};
+      const reward = dropReward * 2;
+      const zoneId = ${safeZoneId};
+      const sdkUrl = ${safeSdkUrl};
+      const requestVar = ${safeRequestVar};
+      const maxPollTries = ${safePollTries};
+      const pollIntervalMs = ${safePollIntervalMs};
+      const tg = window.Telegram.WebApp;
+      const monetagFnName = "show_" + zoneId;
+      const sdkScriptId = "monetag-sdk-" + zoneId;
+      const sdkCandidates = Array.from(
+        new Set([sdkUrl, window.location.origin + "/api/monetag-sdk"])
+      );
+      let sdkReadyPromise = null;
+      let sessionToken = null;
+
+      tg.ready();
+      tg.expand();
+
+      const rewardEl = document.getElementById("reward");
+      const statusEl = document.getElementById("status");
+      const watchButton = document.getElementById("watch");
+      const zoneEl = document.getElementById("zone");
+      const introEl = document.getElementById("intro");
+
+      rewardEl.textContent = String(reward);
+      zoneEl.textContent = zoneId;
+
+      const user = tg.initDataUnsafe?.user;
+      if (user?.first_name) {
+        introEl.textContent =
+          "Hola " +
+          user.first_name +
+          ". Mira el anuncio para reclamar " + reward + " coins del Lucky Drop.";
+      }
+
+      function setStatus(message, tone) {
+        statusEl.textContent = message;
+        statusEl.className = tone ? "status " + tone : "status";
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function scrubTelegramInitData() {
+        try { tg.initData = ""; } catch {}
+        try { tg.initDataUnsafe = {}; } catch {}
+        try {
+          if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.initData = "";
+            window.Telegram.WebApp.initDataUnsafe = {};
+          }
+        } catch {}
+      }
+
+      async function ensureBackendSession() {
+        if (sessionToken) return sessionToken;
+        const response = await fetch("/api/webapp-session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ initData: tg.initData })
+        });
+        const payload = await response.json();
+        if (!response.ok || typeof payload.sessionToken !== "string") {
+          throw new Error(payload.error || "No se pudo abrir una sesion segura de la Mini App.");
+        }
+        sessionToken = payload.sessionToken;
+        scrubTelegramInitData();
+        return sessionToken;
+      }
+
+      function getMonetagShow(optional) {
+        const fn = window[monetagFnName];
+        if (typeof fn !== "function") {
+          if (optional) return null;
+          throw new Error("El SDK de Monetag todavia no termino de cargar.");
+        }
+        return fn;
+      }
+
+      function loadMonetagScript(candidateUrl) {
+        return new Promise((resolve, reject) => {
+          const existing = document.getElementById(sdkScriptId);
+          if (existing) existing.remove();
+          const script = document.createElement("script");
+          script.id = sdkScriptId;
+          script.src = candidateUrl;
+          script.async = true;
+          script.dataset.zone = zoneId;
+          script.dataset.sdk = monetagFnName;
+          script.onload = () => resolve(candidateUrl);
+          script.onerror = () => reject(new Error("No se pudo cargar el SDK de Monetag desde " + candidateUrl));
+          document.head.appendChild(script);
+        });
+      }
+
+      async function ensureMonetagReady() {
+        const existing = getMonetagShow(true);
+        if (existing) return existing;
+        if (!sdkReadyPromise) {
+          sdkReadyPromise = (async () => {
+            setStatus("Cargando SDK de Monetag...");
+            let lastError = null;
+            for (const candidateUrl of sdkCandidates) {
+              try {
+                await loadMonetagScript(candidateUrl);
+                const deadline = Date.now() + 15000;
+                while (Date.now() < deadline) {
+                  const fn = getMonetagShow(true);
+                  if (fn) {
+                    setStatus("SDK listo. Host activo: " + new URL(candidateUrl, window.location.origin).host);
+                    return fn;
+                  }
+                  await sleep(250);
+                }
+                lastError = new Error("El SDK cargo desde " + candidateUrl + ", pero la funcion " + monetagFnName + " no aparecio.");
+              } catch (error) {
+                lastError = error;
+              }
+            }
+            throw lastError || new Error("El SDK de Monetag no termino de cargar.");
+          })().catch((error) => {
+            sdkReadyPromise = null;
+            throw error;
+          });
+        }
+        return sdkReadyPromise;
+      }
+
+      async function createAttempt() {
+        const response = await fetch("/api/drop-x2-attempt", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ dropId, zoneId, sessionToken, requestVar })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "No se pudo iniciar el anuncio.");
+        return payload;
+      }
+
+      async function fetchAttemptStatus(token, clientState, clientError) {
+        const response = await fetch("/api/ad-done?token=" + encodeURIComponent(token), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionToken, clientState, clientError })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "No se pudo consultar el estado del reward.");
+        return payload;
+      }
+
+      async function pollStatus(token, clientState, clientError) {
+        let lastPayload = null;
+        for (let index = 0; index < maxPollTries; index += 1) {
+          lastPayload = await fetchAttemptStatus(token, clientState, clientError);
+          if (lastPayload.state !== "pending") return lastPayload;
+          await sleep(pollIntervalMs);
+        }
+        return lastPayload;
+      }
+
+      async function claimDropX2(adToken) {
+        const response = await fetch("/api/drop-x2-claim", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ dropId, adToken, sessionToken })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "No se pudo reclamar el drop.");
+        return payload;
+      }
+
+      async function applyBackendState(payload, adToken) {
+        if (payload.state === "rewarded") {
+          setStatus("Anuncio confirmado. Reclamando drop...");
+          try {
+            const claim = await claimDropX2(adToken);
+            setStatus("Ganaste " + claim.reward + " coins. Saldo: " + claim.balance + ".", "ok");
+            tg.HapticFeedback?.notificationOccurred?.("success");
+            setTimeout(() => tg.close(), 2000);
+          } catch (error) {
+            setStatus(error instanceof Error ? error.message : "No se pudo reclamar el drop.", "warn");
+            tg.HapticFeedback?.notificationOccurred?.("warning");
+            watchButton.disabled = false;
+          }
+          return;
+        }
+
+        if (payload.state === "limit_reached") {
+          setStatus(payload.message || "Ya llegaste al limite diario de anuncios.", "warn");
+          tg.HapticFeedback?.notificationOccurred?.("warning");
+          watchButton.disabled = false;
+          return;
+        }
+
+        if (payload.state === "cooldown") {
+          setStatus(payload.message || "Debes esperar antes del siguiente anuncio.", "warn");
+          tg.HapticFeedback?.notificationOccurred?.("warning");
+          watchButton.disabled = false;
+          return;
+        }
+
+        if (payload.state === "expired") {
+          setStatus("Este intento ya expiro. Vuelve al grupo e intenta de nuevo.", "warn");
+          tg.HapticFeedback?.notificationOccurred?.("warning");
+          watchButton.disabled = false;
+          return;
+        }
+
+        if (
+          payload.lastRewardEventType === "not_valued" ||
+          payload.lastRewardEventType === "non_valued"
+        ) {
+          setStatus("Monetag confirmo el intento, pero no salio valorizado. No se acreditaron coins.", "warn");
+          tg.HapticFeedback?.notificationOccurred?.("warning");
+          watchButton.disabled = false;
+          return;
+        }
+
+        setStatus("Esperando confirmacion de Monetag. Toca Ver anuncio en unos segundos para reconsultar.");
+        watchButton.disabled = false;
+      }
+
+      watchButton.disabled = true;
+      setStatus("Validando sesion de Telegram...");
+
+      ensureBackendSession()
+        .then(() => ensureMonetagReady())
+        .then(() => {
+          watchButton.disabled = false;
+          setStatus("Listo. Toca para ver el anuncio y ganar " + reward + " coins.");
+        })
+        .catch((error) => {
+          watchButton.disabled = false;
+          setStatus(error instanceof Error ? error.message : "No se pudo preparar Monetag.", "warn");
+        });
+
+      watchButton.addEventListener("click", async () => {
+        let attempt = null;
+        watchButton.disabled = true;
+        setStatus("Preparando SDK...");
+
+        try {
+          await ensureBackendSession();
+          const showAd = await ensureMonetagReady();
+
+          setStatus("Creando intento seguro...");
+          attempt = await createAttempt();
+
+          setStatus("Precargando anuncio...");
+          await showAd({ type: "preload", ymid: attempt.ymid, requestVar });
+
+          setStatus("Mostrando anuncio...");
+          const frontendEvent = await showAd({ ymid: attempt.ymid, requestVar });
+
+          if (frontendEvent?.reward_event_type === "valued") {
+            setStatus("Anuncio visto. Verificando con el backend...");
+            const result = await pollStatus(attempt.token, "resolved", null);
+            await applyBackendState(result, attempt.token);
+          } else {
+            const clientError = frontendEvent?.reward_event_type ?? "unknown_frontend_event";
+            setStatus("El anuncio no salio valorizado en el cliente. Verificando...");
+            const result = await pollStatus(attempt.token, "failed", clientError);
+            await applyBackendState(result, attempt.token);
+          }
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : "Ocurrio un error inesperado.", "warn");
+          if (attempt) {
+            pollStatus(attempt.token, "failed", error instanceof Error ? error.message : "unknown").catch(() => undefined);
+          }
+          watchButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>`;
 }
 
 export function buildAdWebAppHtml(input: {
