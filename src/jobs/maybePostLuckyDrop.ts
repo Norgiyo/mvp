@@ -53,7 +53,7 @@ export async function maybePostLuckyDrop(
           ],
           [
             {
-              text: "x2 🎬",
+              text: "x2",
               url: buildDropX2MiniAppLink(dropId),
               style: "danger"
             }
