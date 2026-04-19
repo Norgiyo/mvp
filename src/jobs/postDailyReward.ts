@@ -6,7 +6,6 @@ import { registerDailyRewardMessage } from "../services/eventCleanup";
 import { encodeCallback } from "../utils/callbackData";
 import { todayKey } from "../utils/time";
 
-const GIFT_EMOJI = String.fromCodePoint(0x1F381);
 const COIN_EMOJI = String.fromCodePoint(0x1FA99);
 
 export async function postDailyReward(api: Api): Promise<{ posted: boolean }> {
@@ -22,14 +21,14 @@ export async function postDailyReward(api: Api): Promise<{ posted: boolean }> {
 
   const message = await api.sendMessage(
     env.groupChatId,
-    `${GIFT_EMOJI} Daily reward\n\nReclama tu reward diario de +${env.dailyRewardCoins} ${COIN_EMOJI}`,
+    '📆',
     {
       disable_notification: true,
       reply_markup: {
         inline_keyboard: [
           [
             {
-              text: `${GIFT_EMOJI} Reclamar +${env.dailyRewardCoins}`,
+              text: "RECLAMAR",
               callback_data: encodeCallback("daily", day),
               style: "success"
             }
