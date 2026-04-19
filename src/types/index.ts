@@ -14,14 +14,12 @@ export type RewardType =
   | "auction_bid"
   | "auction_refund"
   | "auction_prize"
-  | "fondo_donation"
   | "weekly_leaderboard_bonus"
   | "raffle_entry"
   | "raffle_prize";
 
 export type CallbackAction =
   | "balance"
-  | "fondo"
   | "daily"
   | "drop"
   | "mining"

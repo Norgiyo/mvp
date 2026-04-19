@@ -17,14 +17,6 @@ import { isChannelMember } from "../services/channelMembership";
 import { claimDailyReward, claimLuckyDrop } from "../services/coins";
 import { cleanupExpiredEventMessages, registerTemporaryGroupMessage } from "../services/eventCleanup";
 
-import {
-  adjustFondoCupRate,
-  donateCoinsToFondo,
-  getFondoCupRate,
-  getFondoSummary,
-  getFondoValue,
-  setFondoCupRate
-} from "../services/fondo";
 import { closeActiveMiningAndAnnounce, createNextMiningEvent, mineOre } from "../services/mining";
 import {
   closeRaffleAndAnnounce,
@@ -42,10 +34,9 @@ import { addSeconds, todayKey } from "../utils/time";
 import { toTelegramProfile } from "../utils/telegram";
 
 const HOME_MESSAGE_TEXT =
-  "La Esquina\n\nToca el boton para consultar tu saldo. El Fondo se publica aparte como mensaje.";
+  "La Esquina\n\nToca el boton para consultar tu saldo.";
 const ADMIN_PANEL_TEXT =
   "Panel privado de admin\n\nDesde aqui puedes publicar eventos y ejecutar acciones de admin.";
-const FONDO_DONATION_AMOUNTS = [100] as const;
 const COIN_EMOJI = String.fromCodePoint(0x1FA99);
 
 function escapeHtml(value: string): string {
@@ -129,11 +120,7 @@ export function buildAdminKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "Home", callback_data: encodeCallback("admin", "post_home"), style: "primary" },
-        { text: "Donar", callback_data: encodeCallback("admin", "post_fondo_donation"), style: "danger" }
-      ],
-      [
-        { text: "Tasa Fondo", callback_data: encodeCallback("admin", "fondo_rate_panel"), style: "primary" }
+        { text: "Home", callback_data: encodeCallback("admin", "post_home"), style: "primary" }
       ],
       [
         { text: "Daily", callback_data: encodeCallback("admin", "post_daily"), style: "success" },
@@ -173,82 +160,7 @@ export async function sendAdminPanel(api: Api, userId: number): Promise<number> 
   return message.message_id;
 }
 
-function buildFondoRateKeyboard(): InlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        { text: "-10", callback_data: encodeCallback("admin", "fondo_rate_adjust|-10"), style: "danger" },
-        { text: "+10", callback_data: encodeCallback("admin", "fondo_rate_adjust|10"), style: "success" }
-      ],
-      [
-        { text: "Actualizar", callback_data: encodeCallback("admin", "fondo_rate_panel"), style: "primary" },
-        { text: "Volver", callback_data: encodeCallback("admin", "panel"), style: "danger" }
-      ]
-    ]
-  };
-}
 
-async function buildFondoRatePanelText(): Promise<string> {
-  const summary = await getFondoSummary();
-  return [
-    "<b>Tasa del Fondo</b>",
-    "",
-    `Tasa actual: <b>${summary.rate}</b> CUP por USD`,
-    `Fondo visible: <b>${summary.formattedValue}</b>`,
-    `Base guardada: <b>${summary.amountUsd.toFixed(6)} USD</b>`,
-    "",
-    "Usa los botones para subir, bajar o fijar la tasa del dia."
-  ].join("\n");
-}
-
-async function showFondoRatePanel(ctx: Context, userId: number): Promise<void> {
-  const text = await buildFondoRatePanelText();
-  const message = ctx.callbackQuery?.message;
-  if (message?.chat?.id === userId && "message_id" in message) {
-    await ctx.api
-      .editMessageText(userId, message.message_id, text, {
-        parse_mode: "HTML",
-        reply_markup: buildFondoRateKeyboard()
-      })
-      .catch(async () => {
-        await ctx.api.sendMessage(userId, text, {
-          disable_notification: true,
-          parse_mode: "HTML",
-          reply_markup: buildFondoRateKeyboard()
-        });
-      });
-    return;
-  }
-
-  await ctx.api.sendMessage(userId, text, {
-    disable_notification: true,
-    parse_mode: "HTML",
-    reply_markup: buildFondoRateKeyboard()
-  });
-}
-
-function isAllowedFondoDonationAmount(
-  amount: number
-): amount is (typeof FONDO_DONATION_AMOUNTS)[number] {
-  return FONDO_DONATION_AMOUNTS.some((value) => value === amount);
-}
-
-async function postFondoDonationMessage(api: Api, amount: (typeof FONDO_DONATION_AMOUNTS)[number]): Promise<number> {
-  const message = await api.sendMessage(
-    env.groupChatId,
-    '❤️',
-    {
-      disable_notification: true,
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "DONAR", callback_data: encodeCallback("fondo", `donate|${amount}`), style: "danger" }]
-        ]
-      }
-    }
-  );
-
-  return message.message_id;
-}
 export async function handleCallbackQuery(ctx: Context): Promise<void> {
   const query = ctx.callbackQuery;
   if (!query?.from || !("data" in query)) {
@@ -291,68 +203,6 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
         const balance = profile?.balance ?? (await getBalance(from.id));
         const titleSuffix = profile?.specialTitle ? ` | Titulo: ${profile.specialTitle}` : "";
         await answerToast(ctx, `Tu saldo actual es ${balance}${titleSuffix}`);
-        return;
-      }
-
-      case "fondo": {
-        if (typeof payload.value === "string" && payload.value.startsWith("donate|")) {
-          const [, rawAmount] = payload.value.split("|");
-          const amount = Number.parseInt(rawAmount ?? "", 10);
-          if (!Number.isFinite(amount) || !isAllowedFondoDonationAmount(amount)) {
-            await answerToast(ctx, "Monto de donacion invalido.");
-            return;
-          }
-
-          const allowedByCooldown = await acquireCooldown("fondo_donate", from.id, 2);
-          if (!allowedByCooldown) {
-            await answerToast(ctx, "Espera un momento antes de volver a donar.");
-            return;
-          }
-
-          const donation = await donateCoinsToFondo(from.id, amount);
-          if (donation.status === "invalid_amount") {
-            await answerToast(ctx, "Monto de donacion invalido.");
-            return;
-          }
-          if (donation.status === "insufficient_balance") {
-            await answerToast(ctx, "No tienes saldo suficiente para donar.");
-            return;
-          }
-          if (donation.status !== "ok") {
-            await answerToast(ctx, "Donacion no disponible temporalmente.");
-            return;
-          }
-
-          const donorMessage = await ctx.api
-            .sendMessage(
-              env.groupChatId,
-              `${mentionFromUser(from)} acaba de donar ${amount} coins al Fondo. Fondo: ${donation.fondo}.`,
-              {
-                disable_notification: true,
-                parse_mode: "HTML"
-              }
-            )
-            .catch(() => undefined);
-
-          if (donorMessage && "message_id" in donorMessage) {
-            await registerTemporaryGroupMessage(
-              "fondo:donation",
-              "fondo:donation:active",
-              `${from.id}:${donorMessage.message_id}`,
-              donorMessage.message_id,
-              addSeconds(new Date(), 3 * 60).toISOString()
-            ).catch(() => undefined);
-          }
-
-          await answerToast(
-            ctx,
-            `Donaste ${amount} al Fondo. Saldo: ${donation.balance}. Fondo: ${donation.fondo}`
-          );
-          return;
-        }
-
-        const fondo = await getFondoValue();
-        await answerToast(ctx, `El Fondo actual: ${fondo}`);
         return;
       }
 
@@ -637,49 +487,10 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
           return;
         }
 
-        if (typeof payload.value === "string" && payload.value.startsWith("fondo_add|")) {
-          await answerToast(ctx, "La carga manual al Fondo fue desactivada.");
-          return;
-        }
-
-        if (typeof payload.value === "string" && payload.value.startsWith("fondo_rate_set|")) {
-          const rawRate = payload.value.split("|")[1];
-          const rate = Number.parseInt(rawRate ?? "", 10);
-          if (!Number.isFinite(rate) || rate <= 0) {
-            await answerToast(ctx, "Tasa invalida.");
-            return;
-          }
-
-          await setFondoCupRate(rate);
-          await showFondoRatePanel(ctx, from.id);
-          await answerToast(ctx, `Tasa del Fondo: ${rate}`);
-          return;
-        }
-
-        if (typeof payload.value === "string" && payload.value.startsWith("fondo_rate_adjust|")) {
-          const rawDelta = payload.value.split("|")[1];
-          const delta = Number.parseInt(rawDelta ?? "", 10);
-          if (!Number.isFinite(delta) || delta === 0) {
-            await answerToast(ctx, "Ajuste invalido.");
-            return;
-          }
-
-          const rate = await adjustFondoCupRate(delta);
-          await showFondoRatePanel(ctx, from.id);
-          await answerToast(ctx, `Tasa del Fondo: ${rate}`);
-          return;
-        }
-
         switch (payload.value) {
           case "panel": {
             await sendAdminPanel(ctx.api, from.id);
             await answerToast(ctx, "Panel actualizado.");
-            return;
-          }
-
-          case "fondo_rate_panel": {
-            await showFondoRatePanel(ctx, from.id);
-            await answerToast(ctx, `Tasa actual: ${await getFondoCupRate()}`);
             return;
           }
 
@@ -786,17 +597,6 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
             }
 
             await answerToast(ctx, "Mineria cerrada y resultado publicado.");
-            return;
-          }
-
-          case "post_fondo_donation": {
-            const messageId = await runAdminChannelPublish(ctx, "post_fondo_donation", () =>
-              postFondoDonationMessage(ctx.api, 100)
-            );
-            if (messageId === null) {
-              return;
-            }
-            await answerToast(ctx, `Mensaje del Fondo publicado (#${messageId}).`);
             return;
           }
 

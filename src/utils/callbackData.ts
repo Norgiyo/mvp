@@ -12,7 +12,6 @@ export function decodeCallback(data: string | undefined): CallbackPayload | null
   const [action, ...rest] = data.split(":");
   const allowed = new Set<CallbackAction>([
     "balance",
-    "fondo",
     "daily",
     "drop",
     "mining",

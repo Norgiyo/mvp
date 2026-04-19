@@ -7,7 +7,6 @@ import { redis } from "../db/redis";
 import { sql } from "../db/postgres";
 import { acquireCooldown, logFraud, withRedisLock } from "./antiAbuse";
 import { creditUserInTx, getTodayCountByType } from "./coins";
-import { addFondoRevenueInTx } from "./fondo";
 import type {
   AdAttemptState,
   AdAttemptStatus,
@@ -586,7 +585,6 @@ export async function processMonetagPostback(
         "ad_reward",
         `Monetag rewarded ad ${row.ymid}`
       );
-      await addFondoRevenueInTx(tx, payload.estimated_price);
     }
 
     await tx`

@@ -65,7 +65,7 @@ function formatAuctionRemaining(expiresAt: string): string {
 function auctionText(state: AuctionState): string {
   return [
     "<b>SUBASTA ACTIVA</b>",
-    `Premio: <b>${state.prizeCoins} coins del Fondo</b>`,
+    `Premio: <b>${state.prizeCoins} coins</b>`,
     `Precio actual: <b>${state.currentPrice}</b> coins - ${formatAuctionActor(state)}`,
     `Cierra en: <b>${formatAuctionRemaining(state.expiresAt)}</b>`,
     "",
