@@ -130,7 +130,7 @@ export function buildAdminKeyboard(): InlineKeyboardMarkup {
     inline_keyboard: [
       [
         { text: "Home", callback_data: encodeCallback("admin", "post_home"), style: "primary" },
-        { text: "Fondo", callback_data: encodeCallback("admin", "post_fondo_donation"), style: "danger" }
+        { text: "Donar", callback_data: encodeCallback("admin", "post_fondo_donation"), style: "danger" }
       ],
       [
         { text: "Tasa Fondo", callback_data: encodeCallback("admin", "fondo_rate_panel"), style: "primary" }
@@ -234,16 +234,14 @@ function isAllowedFondoDonationAmount(
 }
 
 async function postFondoDonationMessage(api: Api, amount: (typeof FONDO_DONATION_AMOUNTS)[number]): Promise<number> {
-  const fondo = await getFondoValue();
   const message = await api.sendMessage(
     env.groupChatId,
-    `<b>Fondo del barrio</b>\n\nFondo actual: <b>${fondo}</b>\n\n<blockquote>Apoya el Fondo con una donacion directa de <b>${amount} coins</b>.</blockquote>`,
+    '❤️',
     {
       disable_notification: true,
-      parse_mode: "HTML",
       reply_markup: {
         inline_keyboard: [
-          [{ text: `Donar -${amount} ${COIN_EMOJI}`, callback_data: encodeCallback("fondo", `donate|${amount}`), style: "danger" }]
+          [{ text: "DONAR", callback_data: encodeCallback("fondo", `donate|${amount}`), style: "danger" }]
         ]
       }
     }
