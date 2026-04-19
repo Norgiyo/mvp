@@ -695,7 +695,7 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
           }
 
           case "post_daily": {
-            const dailyResult = await runAdminChannelPublish(ctx, "post_daily", () => postDailyReward(ctx.api));
+            const dailyResult = await runAdminChannelPublish(ctx, "post_daily", () => postDailyReward(ctx.api, { force: true }));
             if (dailyResult === null) {
               return;
             }

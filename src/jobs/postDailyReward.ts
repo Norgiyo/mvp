@@ -8,15 +8,18 @@ import { todayKey } from "../utils/time";
 
 const COIN_EMOJI = String.fromCodePoint(0x1FA99);
 
-export async function postDailyReward(api: Api): Promise<{ posted: boolean }> {
+export async function postDailyReward(api: Api, options: { force?: boolean } = {}): Promise<{ posted: boolean }> {
   const day = todayKey();
-  const dedupe = await redis.set(`daily:posted:${day}`, "1", {
-    nx: true,
-    ex: 60 * 60 * 48
-  });
 
-  if (dedupe !== "OK") {
-    return { posted: false };
+  if (!options.force) {
+    const dedupe = await redis.set(`daily:posted:${day}`, "1", {
+      nx: true,
+      ex: 60 * 60 * 48
+    });
+
+    if (dedupe !== "OK") {
+      return { posted: false };
+    }
   }
 
   const message = await api.sendMessage(
