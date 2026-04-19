@@ -125,7 +125,7 @@ export async function postAdEvent(
               {
                 text: "VER AD",
                 url: miniAppUrl,
-                style: "primary"
+                style: "success"
               }
             ]
           ]
