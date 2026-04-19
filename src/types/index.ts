@@ -22,11 +22,19 @@ export type CallbackAction =
   | "balance"
   | "daily"
   | "drop"
+  | "boost"
   | "mining"
   | "birthday"
   | "auction"
   | "raffle"
   | "admin";
+
+export type BoostEventState = {
+  id: string;
+  messageId: number;
+  expiresAt: string;
+  maxSlots: number;
+};
 
 export type CallbackPayload = {
   action: CallbackAction;

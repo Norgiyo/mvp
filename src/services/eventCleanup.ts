@@ -201,6 +201,7 @@ export async function cleanupExpiredEventMessages(api: Api): Promise<void> {
   await withRedisLock("cleanup:expired_events", 10, async () => {
     await cleanupTimedMessages(api, "daily:active", "daily:event");
     await cleanupTimedMessages(api, "drop:winner:active", "drop:winner");
+    await cleanupTimedMessages(api, "boosts:active", "boost:msg");
     await cleanupExpiredAds(api);
     await cleanupExpiredDrops(api);
     await cleanupExpiredBirthdays(api);

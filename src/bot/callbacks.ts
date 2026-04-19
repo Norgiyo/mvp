@@ -4,6 +4,7 @@ import type { Api, Context } from "grammy";
 import { env } from "../config";
 import { redis } from "../db/redis";
 import { maybePostAd } from "../jobs/maybePostAd";
+import { postBoost } from "../jobs/postBoost";
 import { postDailyBirthdays } from "../jobs/postDailyBirthdays";
 import { maybePostLuckyDrop } from "../jobs/maybePostLuckyDrop";
 import { postDailyReward } from "../jobs/postDailyReward";
@@ -11,6 +12,7 @@ import { runWeeklyLeaderboard } from "../jobs/postWeeklyLeaderboard";
 import { markGroupActivity } from "../services/activity";
 import { acquireCooldown, checkCallbackRateLimit, withRedisLock } from "../services/antiAbuse";
 import { parseAuctionPayload, placeAuctionBid, postAuction } from "../services/auction";
+import { claimBoost } from "../services/boost";
 import { mentionBirthdayUser, sendBirthdayGift } from "../services/birthdays";
 import { runSerializedChannelPublish } from "../services/channelPublish";
 import { isChannelMember } from "../services/channelMembership";
@@ -127,7 +129,8 @@ export function buildAdminKeyboard(): InlineKeyboardMarkup {
         { text: "Anuncio", callback_data: encodeCallback("admin", "post_ad"), style: "primary" }
       ],
       [
-        { text: "Lucky drop", callback_data: encodeCallback("admin", "post_drop"), style: "success" }
+        { text: "Lucky drop", callback_data: encodeCallback("admin", "post_drop"), style: "success" },
+        { text: "Boost", callback_data: encodeCallback("admin", "post_boost"), style: "primary" }
       ],
       [
         { text: "Cumpleanos", callback_data: encodeCallback("admin", "post_birthdays"), style: "success" }
@@ -300,6 +303,35 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
         }
 
         await answerToast(ctx, `Drop reclamado. Saldo: ${claimResult.balance}`);
+        return;
+      }
+
+      case "boost": {
+        const boostId = payload.value;
+        if (!boostId) {
+          await answerToast(ctx, "Boost invalido.");
+          return;
+        }
+
+        const boostResult = await claimBoost(boostId, from.id);
+
+        if (boostResult.status === "expired") {
+          await answerToast(ctx, "Este boost ya expiro.");
+          return;
+        }
+        if (boostResult.status === "full") {
+          await answerToast(ctx, "Los 100 slots del boost ya fueron tomados.");
+          return;
+        }
+        if (boostResult.status === "duplicate") {
+          await answerToast(ctx, "Ya activaste este boost.");
+          return;
+        }
+
+        await answerToast(
+          ctx,
+          `Boost activado. Tus coins se duplican por 24h. (${boostResult.status === "ok" ? boostResult.claimedCount : "?"}/100)`
+        );
         return;
       }
 
@@ -597,6 +629,13 @@ export async function handleCallbackQuery(ctx: Context): Promise<void> {
             }
 
             await answerToast(ctx, "Mineria cerrada y resultado publicado.");
+            return;
+          }
+
+          case "post_boost": {
+            const result = await runAdminChannelPublish(ctx, "post_boost", () => postBoost(ctx.api));
+            if (result === null) return;
+            await answerToast(ctx, "Boost publicado.");
             return;
           }
 

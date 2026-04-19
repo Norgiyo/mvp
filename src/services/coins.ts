@@ -1,5 +1,6 @@
 import { env } from "../config";
 import { sql } from "../db/postgres";
+import { hasActiveBoost } from "./boost";
 import type { RewardType } from "../types";
 
 type Tx = any;
@@ -38,10 +39,13 @@ async function creditUserInTx(
   type: RewardType,
   description: string
 ): Promise<number> {
+  const boosted = amount > 0 && (await hasActiveBoost(userId));
+  const finalAmount = boosted ? amount * 2 : amount;
+
   const updated = await tx<{ balance: number }[]>`
     update users
-    set balance = balance + ${amount},
-        total_earned = total_earned + ${amount},
+    set balance = balance + ${finalAmount},
+        total_earned = total_earned + ${finalAmount},
         updated_at = now()
     where telegram_id = ${userId}
     returning balance
@@ -53,7 +57,7 @@ async function creditUserInTx(
 
   await tx`
     insert into transactions (user_id, type, amount, description)
-    values (${userId}, ${type}, ${amount}, ${description})
+    values (${userId}, ${type}, ${finalAmount}, ${description})
   `;
 
   return updated[0].balance;

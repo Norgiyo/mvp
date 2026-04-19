@@ -14,6 +14,7 @@ export function decodeCallback(data: string | undefined): CallbackPayload | null
     "balance",
     "daily",
     "drop",
+    "boost",
     "mining",
     "birthday",
     "auction",
